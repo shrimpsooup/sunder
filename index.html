@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sunder</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;600&display=swap');
+        body,html{margin:0;padding:0;width:100%;height:100%;background-color:#010102;overflow:hidden;font-family:'Inter',sans-serif;color:#fff;user-select:none;}
+        #gameCanvas{display:block;width:100%;height:100%;}
+        #ui-layer{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:40px;box-sizing:border-box;}
+        .hud-top{display:flex;justify-content:space-between;align-items:flex-start;}
+        .health-box{text-align:left;width:30%;max-width:250px;}
+        .health-container{width:100%;height:4px;background:rgba(255,255,255,0.1);margin-top:15px;border-radius:2px;overflow:hidden;}
+        .health-bar{width:100%;height:100%;background:#fff;box-shadow:0 0 8px rgba(255,255,255,0.8);transition:width 0.1s ease-out,background 0.3s;}
+        .score-label{font-size:12px;letter-spacing:4px;color:rgba(255,255,255,0.15);text-transform:uppercase;}
+        .combo-box{text-align:right;}
+        .combo-value{font-size:36px;font-weight:300;color:rgba(255,255,255,0.6);text-shadow:-2px 0 4px rgba(255,50,50,0.5),2px 0 4px rgba(0,150,255,0.5);}
+        .center-screen-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:64px;font-weight:300;letter-spacing:24px;color:rgba(255,255,255,0.9);text-transform:lowercase;opacity:0;pointer-events:none;transition:opacity 0.5s ease;text-shadow:-2px 0 4px rgba(255,50,50,0.5),2px 0 4px rgba(0,150,255,0.5);z-index:10;}
+        #start-screen{position:absolute;top:0;left:0;width:100%;height:100%;background:radial-gradient(circle at center,#0b0b12 0%,#050508 40%,#010102 100%);display:flex;flex-direction:column;justify-content:center;align-items:center;pointer-events:auto;transition:opacity 0.5s ease;z-index:20;}
+        h1{font-size:64px;font-weight:300;letter-spacing:24px;margin:0 0 40px 0;text-transform:lowercase;color:rgba(255,255,255,0.9);text-shadow:-2px 0 4px rgba(255,50,50,0.5),2px 0 4px rgba(0,150,255,0.5);}
+        input[type="file"]{display:none;}
+        .menu-nav{display:flex;flex-direction:column;align-items:center;gap:0;}
+        .menu-item{font-size:18px;font-weight:300;letter-spacing:6px;text-transform:lowercase;color:rgba(255,255,255,0.25);cursor:pointer;padding:14px 0;transition:color 0.2s;user-select:none;}
+        .menu-item:hover{color:rgba(255,255,255,0.7);}
+        .menu-back{position:absolute;top:40px;left:50%;transform:translateX(-50%);font-size:12px;letter-spacing:5px;text-transform:lowercase;color:rgba(255,255,255,0.18);cursor:pointer;transition:color 0.2s;user-select:none;}
+        .menu-back:hover{color:rgba(255,255,255,0.6);}
+        .menu-panel{display:none;flex-direction:column;align-items:center;width:100%;}
+        .menu-panel.active{display:flex;}
+        .setting-row{display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 0;}
+        .setting-label{font-size:11px;letter-spacing:5px;color:rgba(255,255,255,0.18);text-transform:lowercase;}
+        .setting-options{display:flex;gap:24px;}
+        .setting-opt{font-size:15px;letter-spacing:4px;color:rgba(255,255,255,0.2);cursor:pointer;transition:color 0.2s;text-transform:lowercase;padding:4px 0;}
+        .setting-opt:hover{color:rgba(255,255,255,0.55);}
+        .setting-opt.selected{color:rgba(255,255,255,0.85);}
+        .status-text{margin-top:10px;font-size:11px;letter-spacing:2px;color:#0096ff;text-transform:lowercase;height:18px;text-align:center;}
+    </style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<div id="ui-layer">
+    <div class="hud-top">
+        <div class="health-box"><div class="health-container"><div class="health-bar" id="healthEl" style="width:100%;"></div></div></div>
+        <div class="combo-box"><div class="score-label">Combo</div><div class="combo-value" id="comboEl">0x</div></div>
+    </div>
+</div>
+<div id="game-over-screen" class="center-screen-text">over</div>
+<div id="level-complete-screen" class="center-screen-text" style="color:#64ff88;text-shadow:0 0 15px rgba(100,255,136,0.5);">cleared</div>
+<div id="rank-display" style="position:absolute;top:calc(50% + 70px);left:50%;transform:translateX(-50%);font-size:48px;font-weight:300;letter-spacing:12px;color:rgba(100,255,136,0.7);opacity:0;pointer-events:none;transition:opacity 0.8s ease 0.4s;text-shadow:0 0 20px rgba(100,255,136,0.4);z-index:10;"></div>
+<div id="start-screen">
+
+  <!-- ── Main menu ── -->
+  <div class="menu-panel active" id="panel-main">
+    <h1>sunder</h1>
+    <div class="menu-nav">
+      <div class="menu-item" id="nav-play" style="display:none;color:rgba(255,255,255,0.7);">play</div>
+      <div class="menu-item" id="nav-difficulty">difficulty</div>
+      <div class="menu-item" id="nav-level">level</div>
+    </div>
+  </div>
+
+  <!-- ── Difficulty panel ── -->
+  <div class="menu-panel" id="panel-difficulty">
+    <div class="menu-back" id="back-difficulty">← back</div>
+    <h1 style="margin-bottom:32px;">difficulty</h1>
+    <div class="setting-row">
+      <div class="setting-label">note frequency</div>
+      <div class="setting-options" id="opts-freq">
+        <div class="setting-opt selected" data-val="0">sparse</div>
+        <div class="setting-opt" data-val="1">normal</div>
+        <div class="setting-opt" data-val="2">dense</div>
+        <div class="setting-opt" data-val="3">intense</div>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div class="setting-label">damage</div>
+      <div class="setting-options" id="opts-dmg">
+        <div class="setting-opt" data-val="0">gentle</div>
+        <div class="setting-opt selected" data-val="1">normal</div>
+        <div class="setting-opt" data-val="2">hard</div>
+        <div class="setting-opt" data-val="3">brutal</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Level panel ── -->
+  <div class="menu-panel" id="panel-level">
+    <div class="menu-back" id="back-level">← back</div>
+    <h1 style="margin-bottom:32px;">level</h1>
+    <div class="menu-nav">
+      <div class="menu-item" id="nav-upload">upload level</div>
+      <div class="menu-item" id="nav-export">export level</div>
+    </div>
+  </div>
+
+  <!-- ── Upload panel ── -->
+  <div class="menu-panel" id="panel-upload">
+    <div class="menu-back" id="back-upload">← back</div>
+    <h1 style="margin-bottom:32px;">upload</h1>
+    <div class="menu-nav">
+      <label class="menu-item" id="nav-create">
+        upload song and create
+        <input type="file" id="audioUpload" accept="audio/*">
+      </label>
+      <label class="menu-item" id="nav-premade">
+        upload song and premade level
+        <input type="file" id="audioUploadPremade" accept="audio/*">
+      </label>
+      <input type="file" id="jsonUpload" accept=".json" style="display:none;">
+    </div>
+    <div class="status-text" id="uploadStatus">awaiting track...</div>
+    <div class="menu-item" id="startBtn" style="color:rgba(255,255,255,0.5);display:none;margin-top:16px;">start</div>
+  </div>
+
+</div>
+<script>
+const canvas=document.getElementById('gameCanvas');
+// Render scene into an offscreen 2D canvas, then present with a WebGL shader
+const offscreenCanvas=document.createElement('canvas');
+const ctx=offscreenCanvas.getContext('2d');
+const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
+let chromaProgram = null;
+let chromaTex = null;
+let quadBuffer = null;
+function compileShader(src,type){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(s));gl.deleteShader(s);return null;}return s;}
+function createChromaProgram(){
+    if(!gl) return null;
+    const vs=`attribute vec2 a_pos;varying vec2 v_uv;void main(){v_uv=(a_pos+1.0)*0.5;gl_Position=vec4(a_pos,0.0,1.0);}`;
+    const fs=`precision mediump float;uniform sampler2D u_tex;uniform float u_amount;uniform vec2 u_resolution;varying vec2 v_uv;void main(){vec2 center=vec2(0.5,0.5);vec2 dir=v_uv-center;float dist=length(dir);float strength=u_amount*dist;vec2 offsR=dir*strength*0.03;vec2 offsG=dir*strength*0.015;vec2 offsB=dir*strength*0.0;vec4 r=texture2D(u_tex,v_uv+offsR);vec4 g=texture2D(u_tex,v_uv+offsG);vec4 b=texture2D(u_tex,v_uv+offsB);float a=(r.a+g.a+b.a)/3.0;gl_FragColor=vec4(r.r,g.g,b.b,a);}`;
+    const vsn=compileShader(vs,gl.VERTEX_SHADER);
+    const fsn=compileShader(fs,gl.FRAGMENT_SHADER);
+    if(vsn&&fsn){
+        const prog=gl.createProgram();gl.attachShader(prog,vsn);gl.attachShader(prog,fsn);gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(prog));}
+        else return prog;
+    }
+    // If chroma shader failed for any reason, create a simple copy program as fallback
+    const copyFs=`precision mediump float;uniform sampler2D u_tex;varying vec2 v_uv;void main(){gl_FragColor=texture2D(u_tex,v_uv);}`;
+    const copyF=compileShader(copyFs,gl.FRAGMENT_SHADER);
+    if(!vsn||!copyF){console.error('Failed to compile fallback copy shader');return null;}
+    const copyProg=gl.createProgram();gl.attachShader(copyProg,vsn);gl.attachShader(copyProg,copyF);gl.linkProgram(copyProg);if(!gl.getProgramParameter(copyProg,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(copyProg));return null;}return copyProg;
+}
+function initChromaResources(){
+    if(!gl) return;
+    chromaProgram=createChromaProgram();
+    quadBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);const verts=new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]);gl.bufferData(gl.ARRAY_BUFFER,verts,gl.STATIC_DRAW);
+    chromaTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,chromaTex);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+}
+function presentChroma(amount){
+    if(!gl||!chromaProgram){// fallback: blit offscreen into visible canvas
+        const dst=canvas.getContext('2d');if(!dst)return;dst.clearRect(0,0,canvas.width,canvas.height);dst.drawImage(offscreenCanvas,0,0);return;
+    }
+    gl.viewport(0,0,canvas.width,canvas.height);
+    gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);
+    // upload texture from offscreen
+    gl.bindTexture(gl.TEXTURE_2D,chromaTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,0);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,offscreenCanvas);
+    gl.useProgram(chromaProgram);
+    const aPos=gl.getAttribLocation(chromaProgram,'a_pos');gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);gl.enableVertexAttribArray(aPos);gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+    const locAmt=gl.getUniformLocation(chromaProgram,'u_amount');gl.uniform1f(locAmt,amount);
+    const locRes=gl.getUniformLocation(chromaProgram,'u_resolution');gl.uniform2f(locRes,canvas.width,canvas.height);
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,chromaTex);const locTex=gl.getUniformLocation(chromaProgram,'u_tex');gl.uniform1i(locTex,0);
+    gl.drawArrays(gl.TRIANGLES,0,6);
+}
+if(gl) initChromaResources();
+const startScreen=document.getElementById('start-screen');
+const healthEl=document.getElementById('healthEl');
+const comboEl=document.getElementById('comboEl');
+const gameOverScreen=document.getElementById('game-over-screen');
+const levelCompleteScreen=document.getElementById('level-complete-screen');
+
+let width,height,centerX,centerY;
+const PLAYER_RADIUS=24,ENEMY_RADIUS=18,HIT_ZONE_RADIUS=45;
+const HIT_TOLERANCE=0.15,TRAVEL_TIME=2.0,SPAWN_DISTANCE=400;
+let screenScale=1,beatPulse=0,targetBeatPulse=0,damagePulse=0;
+let playerOffsetX=0,playerOffsetY=0,cameraJerkX=0,cameraJerkY=0;
+
+const LANE_COLORS=['#64b4ff','#64ff88','#ffda64','#ff7a7a'];
+// Note frequency: notes-per-second density cap multipliers
+const FREQ_SETTINGS=[0.8,1.5,3.0,6.0]; // sparse / normal / dense / intense
+// Damage: miss penalty, hit heal, quad heal
+const DMG_SETTINGS=[
+    {miss:3, heal:20,quadHeal:50},  // gentle
+    {miss:15,heal:5, quadHeal:20},  // normal
+    {miss:30,heal:2, quadHeal:10},  // hard
+    {miss:50,heal:0, quadHeal:5}    // brutal
+];
+let freqIdx=1, dmgIdx=1;
+let noteDensity=FREQ_SETTINGS[freqIdx];
+let currentDiff=DMG_SETTINGS[dmgIdx];
+
+function resize(){width=window.innerWidth;height=window.innerHeight;canvas.width=width;canvas.height=height;offscreenCanvas.width=width;offscreenCanvas.height=height;centerX=width/2;centerY=height/2;if(gl)gl.viewport(0,0,canvas.width,canvas.height);} 
+window.addEventListener('resize',resize);resize();
+
+let gameState='start',health=100,combo=0;
+let audioCtx,decodedAudioBuffer=null,songSourceNode=null;
+let songStartTime=0,levelEvents=[],currentEventIndex=0,nextPulseTime=0;
+let enemies=[],slashedEnemies=[],slashedPlayer=null,deadTimer=0;
+let songBeatInterval=0.25;
+// Per-frame RMS amplitude envelope of the full song (for beat pulse scaling)
+let songAmplitude=null; // Float32Array, one value per ~20ms window
+let ampWindowSize=0;
+let ampSampleRate=0;
+// Score tracking
+let totalNotes=0,hitNotes=0;
+
+const DIRECTIONS=[
+    // swapped: make ArrowUp behave as down and ArrowDown behave as up
+    {x:0,y:1,key:'ArrowUp'},
+    {x:1,y:0,key:'ArrowRight'},
+    {x:0,y:-1,key:'ArrowDown'},
+    {x:-1,y:0,key:'ArrowLeft'}
+];
+
+// ── Menu navigation ───────────────────────────────────────────────────────────
+function showPanel(id){
+    document.querySelectorAll('.menu-panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+document.getElementById('nav-play').addEventListener('click',()=>doStartGame());
+document.getElementById('nav-difficulty').addEventListener('click',()=>showPanel('panel-difficulty'));
+document.getElementById('back-difficulty').addEventListener('click',()=>showPanel('panel-main'));
+document.getElementById('nav-level').addEventListener('click',()=>showPanel('panel-level'));
+document.getElementById('back-level').addEventListener('click',()=>showPanel('panel-main'));
+document.getElementById('nav-upload').addEventListener('click',()=>showPanel('panel-upload'));
+document.getElementById('back-upload').addEventListener('click',()=>showPanel('panel-level'));
+
+// Note frequency options
+document.getElementById('opts-freq').querySelectorAll('.setting-opt').forEach(el=>{
+    el.addEventListener('click',()=>{
+        document.getElementById('opts-freq').querySelectorAll('.setting-opt').forEach(x=>x.classList.remove('selected'));
+        el.classList.add('selected');
+        freqIdx=parseInt(el.dataset.val);
+        noteDensity=FREQ_SETTINGS[freqIdx];
+    });
+});
+
+// Damage options
+document.getElementById('opts-dmg').querySelectorAll('.setting-opt').forEach(el=>{
+    el.addEventListener('click',()=>{
+        document.getElementById('opts-dmg').querySelectorAll('.setting-opt').forEach(x=>x.classList.remove('selected'));
+        el.classList.add('selected');
+        dmgIdx=parseInt(el.dataset.val);
+        currentDiff=DMG_SETTINGS[dmgIdx];
+    });
+});
+
+// Export level as JSON
+document.getElementById('nav-export').addEventListener('click',()=>{
+    if(!levelEvents.length){alert('no level loaded yet');return;}
+    const blob=new Blob([JSON.stringify(levelEvents,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='sunder_level.json';a.click();
+});
+
+// ── Audio upload ───────────────────────────────────────────────────────────────
+const uploadStatus=document.getElementById('uploadStatus');
+const startBtn=document.getElementById('startBtn');
+
+async function loadAndAnalyze(file){
+    uploadStatus.innerText="decoding audio...";uploadStatus.style.color="#ffda64";
+    startBtn.style.display='none';
+    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    try{
+        const ab=await file.arrayBuffer();
+        decodedAudioBuffer=await audioCtx.decodeAudioData(ab);
+        uploadStatus.innerText="analyzing...";uploadStatus.style.color="#64b4ff";
+        setTimeout(async()=>{
+            levelEvents=await analyzeAudio(decodedAudioBuffer);
+            const quads=levelEvents.filter(e=>e.type==='quad').length;
+            uploadStatus.innerText=`loaded! (${levelEvents.length} notes, ${quads} quads)`;
+            uploadStatus.style.color="#64ff88";
+            startBtn.style.display='block';
+        },100);
+    }catch(err){uploadStatus.innerText="error reading file!";uploadStatus.style.color="#ff7a7a";console.error(err);}
+}
+
+// "upload song and create" — analyse fresh
+document.getElementById('audioUpload').addEventListener('change',async(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    await loadAndAnalyze(file);
+});
+
+// "upload song and premade level" — two-step: first JSON, then audio
+let pendingJson=null;
+document.getElementById('nav-premade').addEventListener('click',(e)=>{
+    e.preventDefault();
+    document.getElementById('jsonUpload').click();
+});
+document.getElementById('jsonUpload').addEventListener('change',(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+        try{
+            pendingJson=JSON.parse(ev.target.result);
+            uploadStatus.innerText="json loaded — now select audio";uploadStatus.style.color="#ffda64";
+            document.getElementById('audioUploadPremade').click();
+        }catch(err){uploadStatus.innerText="invalid json";uploadStatus.style.color="#ff7a7a";}
+    };
+    reader.readAsText(file);
+});
+document.getElementById('audioUploadPremade').addEventListener('change',async(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    uploadStatus.innerText="decoding audio...";uploadStatus.style.color="#ffda64";
+    if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    try{
+        const ab=await file.arrayBuffer();
+        decodedAudioBuffer=await audioCtx.decodeAudioData(ab);
+        if(pendingJson){
+            levelEvents=pendingJson;
+            const quads=levelEvents.filter(e=>e.type==='quad').length;
+            uploadStatus.innerText=`premade loaded! (${levelEvents.length} notes, ${quads} quads)`;
+            uploadStatus.style.color="#64ff88";
+            startBtn.style.display='block';
+            document.getElementById('nav-play').style.display='block';
+        } else {
+            await loadAndAnalyze(file);
+        }
+    }catch(err){uploadStatus.innerText="error!";uploadStatus.style.color="#ff7a7a";console.error(err);}
+});
+
+// ── Analysis ──────────────────────────────────────────────────────────────────
+async function extractBandData(buffer,f1,f2,windowSize,hopSize){
+    const off=new OfflineAudioContext(1,buffer.length,buffer.sampleRate);
+    const src=off.createBufferSource();src.buffer=buffer;
+    const filt=off.createBiquadFilter();filt.type='bandpass';
+    filt.frequency.value=Math.sqrt(f1*f2);filt.Q.value=Math.sqrt(f1*f2)/(f2-f1);
+    src.connect(filt);filt.connect(off.destination);src.start();
+    const rendered=await off.startRendering();
+    const data=rendered.getChannelData(0);
+    const nf=Math.floor((data.length-windowSize)/hopSize)+1;
+    const rms=new Float32Array(nf),flux=new Float32Array(nf);
+    for(let f=0;f<nf;f++){
+        const st=f*hopSize;let sum=0;
+        for(let i=0;i<windowSize&&st+i<data.length;i++){const s=data[st+i];sum+=s*s;}
+        rms[f]=Math.sqrt(sum/windowSize);
+    }
+    for(let f=1;f<nf;f++)flux[f]=Math.max(0,rms[f]-rms[f-1]);
+    return{rms,flux};
+}
+
+async function extractBassRms(buffer,windowSize,hopSize){
+    const off=new OfflineAudioContext(1,buffer.length,buffer.sampleRate);
+    const src=off.createBufferSource();src.buffer=buffer;
+    const filt=off.createBiquadFilter();filt.type='lowpass';filt.frequency.value=150;
+    src.connect(filt);filt.connect(off.destination);src.start();
+    const rendered=await off.startRendering();
+    const data=rendered.getChannelData(0);
+    const nf=Math.floor((data.length-windowSize)/hopSize)+1;
+    const rms=new Float32Array(nf);
+    for(let f=0;f<nf;f++){
+        const st=f*hopSize;let sum=0;
+        for(let i=0;i<windowSize&&st+i<data.length;i++){const s=data[st+i];sum+=s*s;}
+        rms[f]=Math.sqrt(sum/windowSize);
+    }
+    return rms;
+}
+
+async function analyzeAudio(buffer){
+    const sr=buffer.sampleRate,ws=1024,hs=512;
+    const BANDS=[
+        {f1:200, f2:600, lane:2},
+        {f1:600, f2:1500,lane:3},
+        {f1:1500,f2:3500,lane:1},
+        {f1:3500,f2:9000,lane:0}
+    ];
+
+    const[bassRms,...bandData]=await Promise.all([
+        extractBassRms(buffer,ws,hs),
+        ...BANDS.map(b=>extractBandData(buffer,b.f1,b.f2,ws,hs))
+    ]);
+
+    const nf=bandData[0].rms.length;
+    // Combined onset strength = spectral flux sum across all melody bands
+    const onset=new Float32Array(nf);
+    for(let f=0;f<nf;f++)for(let b=0;b<bandData.length;b++)onset[f]+=bandData[b].flux[f];
+
+    // Peak picking: sigma=1.1, ctx=+-150ms, localmax guard=+-35ms, min spacing=120ms
+    const ctx_f=Math.max(4,Math.round(0.15*sr/hs));
+    const minSpc=Math.max(2,Math.round(0.12*sr/hs));
+    const guard=3;
+    const onsets=[];
+
+    for(let f=ctx_f;f<nf-ctx_f;f++){
+        const n=ctx_f*2+1;
+        let sum=0,ssq=0;
+        for(let j=f-ctx_f;j<=f+ctx_f;j++){sum+=onset[j];ssq+=onset[j]*onset[j];}
+        const mean=sum/n,std=Math.sqrt(Math.max(0,ssq/n-mean*mean));
+        if(onset[f]<mean+std*1.1||onset[f]<0.0003)continue;
+
+        let isMax=true;
+        for(let j=f-guard;j<=f+guard;j++)if(j!==f&&onset[j]>=onset[f]){isMax=false;break;}
+        if(!isMax)continue;
+
+        // Lane: which band had the largest relative flux spike?
+        let bestBand=0,bestScore=-1;
+        for(let b=0;b<bandData.length;b++){
+            let ls=0;for(let j=f-ctx_f;j<=f+ctx_f;j++)ls+=bandData[b].rms[j];
+            const lm=ls/n;
+            const sc=lm>0.00005?bandData[b].flux[f]/lm:0;
+            if(sc>bestScore){bestScore=sc;bestBand=b;}
+        }
+
+        const isBass=f>0&&bassRms[f]>bassRms[f-1]*1.6&&bassRms[f]>0.003;
+
+        onsets.push({time:(f*hs)/sr,lane:BANDS[bestBand].lane,strength:onset[f],isBass,frame:f});
+        f+=minSpc-1;
+    }
+
+    // Density cap: ~3 notes/sec
+    const target=Math.round(buffer.duration*noteDensity);
+    let final=onsets;
+    if(onsets.length>target){
+        final=[...onsets].sort((a,b)=>b.strength-a.strength).slice(0,target).sort((a,b)=>a.time-b.time);
+        const rs=[final[0]];
+        for(let i=1;i<final.length;i++)if(final[i].time-rs[rs.length-1].time>=0.12)rs.push(final[i]);
+        final=rs;
+    }
+
+    // ── Full-band amplitude envelope for camera pulse scaling ───────────────
+    // Use a coarse 100ms hop so this stays fast even on long tracks.
+    {
+        const raw=buffer.getChannelData(0);
+        const coarseHop=Math.floor(buffer.sampleRate*0.1); // one value per 100ms
+        const nf=Math.floor(raw.length/coarseHop)+1;
+        const env=new Float32Array(nf);
+        for(let f=0;f<nf;f++){
+            const st=f*coarseHop;let s=0;
+            for(let i=0;i<coarseHop&&st+i<raw.length;i++)s+=raw[st+i]*raw[st+i];
+            env[f]=Math.sqrt(s/coarseHop);
+        }
+        songAmplitude=env;
+        ampWindowSize=coarseHop;
+        ampSampleRate=buffer.sampleRate;
+    }
+
+    // ── BPM estimation from inter-onset intervals ────────────────────────────
+    // Collect all gaps between consecutive notes, keep only those in the
+    // 60–240 BPM range (0.25s–1.0s), take the median — that's one beat.
+    if(final.length>2){
+        const gaps=[];
+        for(let i=1;i<final.length;i++){
+            const g=final[i].time-final[i-1].time;
+            if(g>=0.20&&g<=1.0)gaps.push(g);
+        }
+        if(gaps.length>0){
+            gaps.sort((a,b)=>a-b);
+            songBeatInterval=gaps[Math.floor(gaps.length/2)]; // median
+        }
+    }
+
+    // ── Per-lane deduplication ───────────────────────────────────────────────
+    // Two notes on the same lane closer than one beat will sit on top of each
+    // other due to the global step clock. Keep only the stronger one.
+    const laneLastTime = [null, null, null, null];
+    const deduped = [];
+    for (const o of final) {
+        const prev = laneLastTime[o.lane];
+        if (prev === null || o.time - prev >= songBeatInterval) {
+            deduped.push(o);
+            laneLastTime[o.lane] = o.time;
+        }
+        // else: drop — same lane, same beat slot, weaker note
+    }
+    final = deduped;
+
+    // Quad promotion: top 8% by raw onset strength only.
+    const sorted=[...final].sort((a,b)=>b.strength-a.strength);
+    const cutoff=sorted[Math.max(0,Math.floor(sorted.length*0.08))]?.strength??Infinity;
+
+    const result=final.map(o=>({
+        time:o.time,
+        type:o.strength>=cutoff?'quad':'single',
+        lane:o.lane,
+        energy:o.strength,
+        isBass:o.isBass
+    }));
+    totalNotes=result.reduce((s,e)=>s+(e.type==='quad'?4:1),0);
+    hitNotes=0;
+    return result;
+}
+
+// ── Sounds ────────────────────────────────────────────────────────────────────
+function playHitSound(type){
+    if(!audioCtx)return;
+    const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+    osc.connect(gain);gain.connect(audioCtx.destination);
+    const now=audioCtx.currentTime;
+    if(type==='perfect'){osc.type='sine';osc.frequency.setValueAtTime(1200,now);gain.gain.setValueAtTime(0.3,now);gain.gain.exponentialRampToValueAtTime(0.01,now+0.1);}
+    else if(type==='miss'){osc.type='sawtooth';osc.frequency.setValueAtTime(110,now);gain.gain.setValueAtTime(0.5,now);gain.gain.linearRampToValueAtTime(0.01,now+0.2);}
+    else if(type==='quad'){osc.type='square';osc.frequency.setValueAtTime(440,now);osc.frequency.exponentialRampToValueAtTime(880,now+0.1);gain.gain.setValueAtTime(0.4,now);gain.gain.exponentialRampToValueAtTime(0.01,now+0.3);}
+    osc.start(now);osc.stop(now+0.3);
+}
+
+// ── Entities ──────────────────────────────────────────────────────────────────
+class Enemy{
+    constructor(lane,t){this.lane=lane;this.targetHitTime=t;this.dir=DIRECTIONS[lane];this.color=LANE_COLORS[lane];this.active=true;}
+    update(ct){
+        const tr=this.targetHitTime-ct;
+        if(tr<-HIT_TOLERANCE*1.5&&this.active){
+            this.active=false;registerHit('miss');
+            playerOffsetX=-this.dir.x*25;playerOffsetY=-this.dir.y*25;damagePulse=1.0;
+        }
+        let nt=tr/TRAVEL_TIME;if(nt<0)nt=0;
+        const d=HIT_ZONE_RADIUS+Math.pow(nt,1.3)*SPAWN_DISTANCE;
+        this.x=centerX+this.dir.x*d;
+        this.y=centerY+this.dir.y*d;
+    }
+    draw(c){
+        if(!this.active)return;
+        const ca=3+Math.min(combo/30,1)*7;
+        c.save();c.globalCompositeOperation='screen';
+        c.translate(this.x,this.y);
+        c.beginPath();c.arc(ca,0,ENEMY_RADIUS,0,Math.PI*2);c.fillStyle='rgba(0,150,255,0.4)';c.fill();
+        c.beginPath();c.arc(-ca,0,ENEMY_RADIUS,0,Math.PI*2);c.fillStyle='rgba(255,50,50,0.4)';c.fill();
+        c.fillStyle=this.color;c.beginPath();c.arc(0,0,ENEMY_RADIUS,0,Math.PI*2);c.fill();
+        c.restore();
+    }
+}
+
+class SlashedEnemy{
+    constructor(x,y,color,lane){this.x=x;this.y=y;this.color=color;this.life=1;this.gap=0;this.angle=(lane===0||lane===2)?Math.PI/2:0;}
+    update(dt){this.life-=dt*2.5;this.gap+=dt*80;}
+    draw(c){
+        if(this.life<=0)return;
+        c.save();c.globalAlpha=this.life;c.translate(this.x,this.y);c.rotate(this.angle);
+        c.beginPath();c.arc(this.gap,0,ENEMY_RADIUS,-Math.PI/2,Math.PI/2);c.fillStyle=this.color;c.fill();
+        c.beginPath();c.arc(-this.gap,0,ENEMY_RADIUS,Math.PI/2,Math.PI*1.5);c.fillStyle=this.color;c.fill();
+        c.globalCompositeOperation='screen';
+        c.fillStyle=`rgba(255,50,50,${this.life*0.8})`;c.fillRect(-6,-ENEMY_RADIUS,4,ENEMY_RADIUS*2);
+        c.fillStyle=`rgba(50,150,255,${this.life*0.8})`;c.fillRect(2,-ENEMY_RADIUS,4,ENEMY_RADIUS*2);
+        c.fillStyle=`rgba(255,255,255,${this.life})`;c.fillRect(-2,-ENEMY_RADIUS,4,ENEMY_RADIUS*2);
+        c.restore();
+    }
+}
+
+class SlashedPlayer{
+    constructor(){this.gap=0;this.angle=Math.PI/4;}
+    update(dt){this.gap+=dt*30;}
+    draw(c){
+        c.save();c.translate(centerX+playerOffsetX,centerY+playerOffsetY);c.rotate(this.angle);
+        c.save();c.translate(this.gap,0);c.beginPath();c.rect(0,-PLAYER_RADIUS-20,PLAYER_RADIUS+20,(PLAYER_RADIUS+20)*2);c.clip();this.drawCore(c);c.restore();
+        c.save();c.translate(-this.gap,0);c.beginPath();c.rect(-PLAYER_RADIUS-20,-PLAYER_RADIUS-20,PLAYER_RADIUS+20,(PLAYER_RADIUS+20)*2);c.clip();this.drawCore(c);c.restore();
+        c.globalCompositeOperation='screen';
+        c.fillStyle='rgba(255,50,50,0.8)';c.fillRect(-4,-PLAYER_RADIUS-10,2,(PLAYER_RADIUS+10)*2);
+        c.fillStyle='rgba(50,150,255,0.8)';c.fillRect(2,-PLAYER_RADIUS-10,2,(PLAYER_RADIUS+10)*2);
+        c.fillStyle='rgba(255,255,255,1)';c.fillRect(-2,-PLAYER_RADIUS-10,4,(PLAYER_RADIUS+10)*2);
+        c.restore();
+    }
+    drawCore(c){
+        c.globalCompositeOperation='screen';
+        c.beginPath();c.arc(3,0,PLAYER_RADIUS,0,Math.PI*2);c.fillStyle='rgba(0,150,255,0.6)';c.fill();
+        c.beginPath();c.arc(-3,0,PLAYER_RADIUS,0,Math.PI*2);c.fillStyle='rgba(255,50,50,0.6)';c.fill();
+        c.beginPath();c.arc(0,0,PLAYER_RADIUS,0,Math.PI*2);c.fillStyle='#fff';c.fill();
+    }
+}
+
+// ── Game logic ────────────────────────────────────────────────────────────────
+function spawnTrackEvents(tt){
+    const la=tt+TRAVEL_TIME;
+    while(currentEventIndex<levelEvents.length&&levelEvents[currentEventIndex].time<=la){
+        const ev=levelEvents[currentEventIndex];
+        if(ev.type==='quad'){for(let i=0;i<4;i++)enemies.push(new Enemy(i,ev.time));}
+        else if(ev.type==='single'){enemies.push(new Enemy(ev.lane,ev.time));}
+        currentEventIndex++;
+    }
+}
+
+function getSongAmplitude(tt){
+    if(!songAmplitude||tt<0)return 0.5;
+    const hopSize=512;
+    const f=Math.floor((tt*ampSampleRate)/hopSize);
+    if(f<0||f>=songAmplitude.length)return 0;
+    return songAmplitude[Math.min(f,songAmplitude.length-1)];
+}
+
+let lastBeatIndex=-1;
+function checkPulses(tt){
+    // Skip past old events
+    while(nextPulseTime<levelEvents.length&&levelEvents[nextPulseTime].time<=tt)
+        nextPulseTime++;
+
+    // Continuous metronome: fire on every beat tick from the global beat clock
+    if(songBeatInterval>0){
+        const beatIndex=Math.floor(tt/songBeatInterval);
+        if(beatIndex>lastBeatIndex){
+            lastBeatIndex=beatIndex;
+            const amp=getSongAmplitude(tt);
+            // Scale pulse by current song loudness — quiet = subtle, loud = hard thump
+            const ampScale=Math.min(3.0,0.3+amp*10);
+            const comboBoost=1+Math.min(combo/20,1.5);
+            targetBeatPulse=Math.min(2.0,0.3*ampScale*comboBoost);
+        }
+    }
+}
+
+function updateUI(){
+    healthEl.style.width=Math.max(0,health)+'%';
+    healthEl.style.background=health<30?'#ff4444':'#fff';
+    healthEl.style.boxShadow=health<30?'0 0 15px rgba(255,50,50,0.8)':'0 0 8px rgba(255,255,255,0.8)';
+    comboEl.innerText=combo+'x';
+    comboEl.style.color=combo>10?'rgba(255,255,255,0.5)':'rgba(255,255,255,0.2)';
+}
+
+function registerHit(q){
+    if(q==='miss'){combo=0;health-=currentDiff.miss;playHitSound('miss');}
+    if(q==='perfect'){combo++;hitNotes++;health=Math.min(100,health+currentDiff.heal);playHitSound('perfect');}
+    if(q==='quad'){combo+=4;hitNotes+=4;health=Math.min(100,health+currentDiff.quadHeal);playHitSound('quad');}
+    updateUI();
+    if(health<=0&&gameState==='playing')triggerGameOver();
+}
+
+function handleInput(key){
+    if(gameState!=='playing'||!audioCtx)return;
+    const tt=audioCtx.currentTime-songStartTime;
+    if(key==='Space'){
+        const hits=enemies.filter(e=>e.active&&Math.abs(e.targetHitTime-tt)<HIT_TOLERANCE*2);
+        if(hits.length>=4){hits.forEach(e=>{e.active=false;slashedEnemies.push(new SlashedEnemy(e.x,e.y,e.color,e.lane));});registerHit('quad');targetBeatPulse=1.8;cameraJerkX=(Math.random()-0.5)*80;cameraJerkY=(Math.random()-0.5)*80;}
+        else registerHit('miss');
+        return;
+    }
+    const li=DIRECTIONS.findIndex(d=>d.key===key);
+    if(li!==-1){
+        let cl=null,md=Infinity;
+        for(const e of enemies)if(e.active&&e.lane===li){const d=Math.abs(e.targetHitTime-tt);if(d<md){md=d;cl=e;}}
+        if(cl&&md<HIT_TOLERANCE*2){cl.active=false;slashedEnemies.push(new SlashedEnemy(cl.x,cl.y,cl.color,cl.lane));registerHit('perfect');cameraJerkX=(Math.random()-0.5)*25;cameraJerkY=(Math.random()-0.5)*25;targetBeatPulse=0.3;}
+        else registerHit('miss');
+    }
+}
+
+window.addEventListener('keydown',e=>{
+    if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code))e.preventDefault();
+    handleInput(e.code);
+});
+
+function resetGame(){
+    health=100;combo=0;enemies=[];slashedEnemies=[];slashedPlayer=null;
+    deadTimer=0;currentEventIndex=0;nextPulseTime=0;lastBeatIndex=-1;playerOffsetX=0;playerOffsetY=0;updateUI();
+    if(songSourceNode){try{songSourceNode.stop();}catch(e){}songSourceNode=null;}
+    gameState='start';startScreen.style.display='flex';void startScreen.offsetWidth;
+    showPanel('panel-main');
+    if(levelEvents.length)document.getElementById('nav-play').style.display='block';
+    startScreen.style.opacity='1';gameOverScreen.style.opacity='0';levelCompleteScreen.style.opacity='0';document.getElementById('rank-display').style.opacity='0';
+}
+
+function triggerGameOver(){gameState='dying';if(songSourceNode)songSourceNode.stop();}
+
+function doStartGame(){
+    if(!decodedAudioBuffer||!levelEvents.length)return;
+    currentDiff=DMG_SETTINGS[dmgIdx];
+    // reset play state
+    health=100;combo=0;enemies=[];slashedEnemies=[];slashedPlayer=null;
+    deadTimer=0;currentEventIndex=0;nextPulseTime=0;lastBeatIndex=-1;playerOffsetX=0;playerOffsetY=0;updateUI();
+    startScreen.style.opacity='0';
+    setTimeout(()=>{
+        startScreen.style.display='none';
+        if(songSourceNode){try{songSourceNode.stop();}catch(e){}}
+        songSourceNode=audioCtx.createBufferSource();songSourceNode.buffer=decodedAudioBuffer;
+        const g=audioCtx.createGain();g.gain.value=0.8;songSourceNode.connect(g);g.connect(audioCtx.destination);
+        songStartTime=audioCtx.currentTime+TRAVEL_TIME;songSourceNode.start(songStartTime);
+        gameState='playing';lastTime=performance.now();requestAnimationFrame(gameLoop);
+    },500);
+}
+startBtn.addEventListener('click',doStartGame);
+
+// ── Render ────────────────────────────────────────────────────────────────────
+function drawBg(){
+    const g=ctx.createRadialGradient(centerX,centerY,0,centerX,centerY,Math.max(width,height));
+    g.addColorStop(0,'#151522');g.addColorStop(0.4,'#0a0a10');g.addColorStop(1,'#020203');
+    ctx.fillStyle=g;ctx.fillRect(0,0,width,height);
+}
+function drawPlayer(){
+    const ca=3+Math.min(combo/30,1)*9; // 3px base, up to 12px at max combo
+    ctx.save();ctx.translate(playerOffsetX,playerOffsetY);ctx.globalCompositeOperation='screen';
+    ctx.beginPath();ctx.arc(centerX+ca,centerY,PLAYER_RADIUS,0,Math.PI*2);ctx.fillStyle='rgba(0,150,255,0.6)';ctx.fill();
+    ctx.beginPath();ctx.arc(centerX-ca,centerY,PLAYER_RADIUS,0,Math.PI*2);ctx.fillStyle='rgba(255,50,50,0.6)';ctx.fill();
+    ctx.beginPath();ctx.arc(centerX,centerY,PLAYER_RADIUS,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+    ctx.restore();
+}
+
+let lastTime=0;
+function gameLoop(ts){
+    if(gameState==='start')return;
+    const dt=Math.min((ts-lastTime)/1000,0.1);lastTime=ts;
+    const tt=audioCtx.currentTime-songStartTime;
+
+    if(gameState==='playing'&&tt>decodedAudioBuffer.duration+2){
+        gameState='cleared';deadTimer=0;levelCompleteScreen.style.opacity='1';
+        const pct=totalNotes>0?hitNotes/totalNotes:0;
+        const rank=pct>=0.95?'S':pct>=0.82?'A':pct>=0.65?'B':pct>=0.45?'C':'D';
+        const rd=document.getElementById('rank-display');
+        rd.innerText=rank;rd.style.opacity='1';
+    }
+    if(gameState==='dying'&&enemies.length===0){gameState='dead';deadTimer=0;slashedPlayer=new SlashedPlayer();gameOverScreen.style.opacity='1';cameraJerkX=(Math.random()-0.5)*80;cameraJerkY=(Math.random()-0.5)*80;damagePulse=1.5;}
+    if(gameState==='dead'||gameState==='cleared'){deadTimer+=dt;if(deadTimer>5){resetGame();return;}}
+    if(gameState==='playing'){spawnTrackEvents(tt);checkPulses(tt);}
+
+    targetBeatPulse+=(0-targetBeatPulse)*12*dt;beatPulse+=(targetBeatPulse-beatPulse)*24*dt;
+    damagePulse+=(0-damagePulse)*10*dt;playerOffsetX+=(0-playerOffsetX)*15*dt;playerOffsetY+=(0-playerOffsetY)*15*dt;
+    cameraJerkX+=(0-cameraJerkX)*15*dt;cameraJerkY+=(0-cameraJerkY)*15*dt;
+
+    enemies.forEach(e=>e.update(tt));enemies=enemies.filter(e=>e.active);
+    slashedEnemies.forEach(e=>e.update(dt));slashedEnemies=slashedEnemies.filter(e=>e.life>0);
+    if(slashedPlayer)slashedPlayer.update(dt);
+    const curAmp=getSongAmplitude(tt);
+    const ampBoost=Math.min(2.5,0.5+curAmp*6);
+    screenScale=1+beatPulse*0.04*ampBoost;
+
+    ctx.clearRect(0,0,width,height);drawBg();
+    ctx.save();
+    ctx.translate(centerX+cameraJerkX,centerY+cameraJerkY);ctx.scale(screenScale,screenScale);ctx.translate(-centerX,-centerY);
+    ctx.save();ctx.globalCompositeOperation='screen';ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(centerX+3,centerY,HIT_ZONE_RADIUS,0,Math.PI*2);ctx.strokeStyle='rgba(0,150,255,0.08)';ctx.stroke();
+    ctx.beginPath();ctx.arc(centerX-3,centerY,HIT_ZONE_RADIUS,0,Math.PI*2);ctx.strokeStyle='rgba(255,50,50,0.08)';ctx.stroke();
+    ctx.beginPath();ctx.arc(centerX,centerY,HIT_ZONE_RADIUS,0,Math.PI*2);ctx.strokeStyle='rgba(255,255,255,0.08)';ctx.stroke();
+    ctx.restore();
+    slashedEnemies.forEach(e=>e.draw(ctx));
+    enemies.forEach(e=>e.draw(ctx));
+    if(gameState!=='dead')drawPlayer();else if(slashedPlayer)slashedPlayer.draw(ctx);
+    ctx.restore();
+
+    // Combo intensity: 0 at 0 combo, approaches 1.0 at ~30 combo
+    const comboT = Math.min(1.0, combo / 30);
+
+    // ── Beat pulse border gradient (gets more intense with combo) ─────────────
+    if(beatPulse>0.01){
+        const m=Math.max(width,height);
+        const baseR=30+Math.round(comboT*80);
+        const baseG=60+Math.round(comboT*20);
+        const baseB=120+Math.round(comboT*60);
+        const i1=beatPulse*(0.10+comboT*0.25);
+        const i2=beatPulse*(0.20+comboT*0.50);
+        const innerR=Math.max(0,0.15-comboT*0.05);
+        const g=ctx.createRadialGradient(centerX,centerY,m*innerR,centerX,centerY,m*0.75);
+        g.addColorStop(0,`rgba(${baseR},${baseG},${baseB},0)`);
+        g.addColorStop(0.5,`rgba(${baseR},${baseG},${baseB},${i1})`);
+        g.addColorStop(1,`rgba(${baseR+30},${baseG+80},${baseB+80},${i2})`);
+        ctx.globalCompositeOperation='screen';ctx.fillStyle=g;ctx.fillRect(0,0,width,height);ctx.globalCompositeOperation='source-over';
+    }
+
+    // ── Corner warp (canvas skew at high combo) ───────────────────────────────
+    if(comboT>0.1&&beatPulse>0.01){
+        const warpAmt=comboT*beatPulse*18;
+        // Draw subtle dark vignette that pulls the corners inward
+        const cg=ctx.createRadialGradient(centerX,centerY,Math.min(width,height)*0.3,centerX,centerY,Math.max(width,height)*0.85);
+        cg.addColorStop(0,'rgba(0,0,0,0)');
+        cg.addColorStop(1,`rgba(0,0,10,${comboT*beatPulse*0.55})`);
+        ctx.fillStyle=cg;ctx.fillRect(0,0,width,height);
+
+        // Chromatic corner streaks
+        ctx.save();ctx.globalCompositeOperation='screen';ctx.globalAlpha=comboT*beatPulse*0.18;
+        // top-left
+        const tl=ctx.createLinearGradient(0,0,warpAmt*3,warpAmt*3);
+        tl.addColorStop(0,'rgba(255,0,80,0.9)');tl.addColorStop(1,'rgba(255,0,80,0)');
+        ctx.fillStyle=tl;ctx.fillRect(0,0,warpAmt*6,warpAmt*6);
+        // top-right
+        const tr=ctx.createLinearGradient(width,0,width-warpAmt*3,warpAmt*3);
+        tr.addColorStop(0,'rgba(0,200,255,0.9)');tr.addColorStop(1,'rgba(0,200,255,0)');
+        ctx.fillStyle=tr;ctx.fillRect(width-warpAmt*6,0,warpAmt*6,warpAmt*6);
+        // bottom-left
+        const bl=ctx.createLinearGradient(0,height,warpAmt*3,height-warpAmt*3);
+        bl.addColorStop(0,'rgba(0,200,255,0.9)');bl.addColorStop(1,'rgba(0,200,255,0)');
+        ctx.fillStyle=bl;ctx.fillRect(0,height-warpAmt*6,warpAmt*6,warpAmt*6);
+        // bottom-right
+        const br=ctx.createLinearGradient(width,height,width-warpAmt*3,height-warpAmt*3);
+        br.addColorStop(0,'rgba(255,0,80,0.9)');br.addColorStop(1,'rgba(255,0,80,0)');
+        ctx.fillStyle=br;ctx.fillRect(width-warpAmt*6,height-warpAmt*6,warpAmt*6,warpAmt*6);
+        ctx.restore();
+    }
+
+    // ── Damage pulse ──────────────────────────────────────────────────────────
+    if(damagePulse>0.01){
+        const m=Math.max(width,height);
+        const g=ctx.createRadialGradient(centerX,centerY,m*0.2,centerX,centerY,m*0.8);
+        g.addColorStop(0,'rgba(255,0,0,0)');g.addColorStop(0.5,`rgba(200,20,20,${damagePulse*0.3})`);g.addColorStop(1,`rgba(255,0,0,${damagePulse*0.7})`);
+        ctx.fillStyle=g;ctx.fillRect(0,0,width,height);
+    }
+
+    if((gameState==='dead'||gameState==='cleared')&&deadTimer>3){
+        ctx.fillStyle=`rgba(0,0,0,${Math.min(1,(deadTimer-3)/1.5)})`;ctx.fillRect(0,0,width,height);
+    }
+    // Compute chromatic aberration amount based on combo, beat and damage pulses
+    const chromaAmount = Math.min(1.2, comboT*beatPulse*0.9 + damagePulse*0.6 + beatPulse*0.15);
+    presentChroma(chromaAmount);
+    requestAnimationFrame(gameLoop);
+}
+</script>
+</body>
+</html>
