@@ -115,52 +115,7 @@
 </div>
 <script>
 const canvas=document.getElementById('gameCanvas');
-// Render scene into an offscreen 2D canvas, then present with a WebGL shader
-const offscreenCanvas=document.createElement('canvas');
-const ctx=offscreenCanvas.getContext('2d');
-const gl=canvas.getContext('webgl')||canvas.getContext('experimental-webgl');
-let chromaProgram = null;
-let chromaTex = null;
-let quadBuffer = null;
-function compileShader(src,type){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(s));gl.deleteShader(s);return null;}return s;}
-function createChromaProgram(){
-    if(!gl) return null;
-    const vs=`attribute vec2 a_pos;varying vec2 v_uv;void main(){v_uv=(a_pos+1.0)*0.5;gl_Position=vec4(a_pos,0.0,1.0);}`;
-    const fs=`precision mediump float;uniform sampler2D u_tex;uniform float u_amount;uniform vec2 u_resolution;varying vec2 v_uv;void main(){vec2 center=vec2(0.5,0.5);vec2 dir=v_uv-center;float dist=length(dir);float strength=u_amount*dist;vec2 offsR=dir*strength*0.03;vec2 offsG=dir*strength*0.015;vec2 offsB=dir*strength*0.0;vec4 r=texture2D(u_tex,v_uv+offsR);vec4 g=texture2D(u_tex,v_uv+offsG);vec4 b=texture2D(u_tex,v_uv+offsB);float a=(r.a+g.a+b.a)/3.0;gl_FragColor=vec4(r.r,g.g,b.b,a);}`;
-    const vsn=compileShader(vs,gl.VERTEX_SHADER);
-    const fsn=compileShader(fs,gl.FRAGMENT_SHADER);
-    if(vsn&&fsn){
-        const prog=gl.createProgram();gl.attachShader(prog,vsn);gl.attachShader(prog,fsn);gl.linkProgram(prog);if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(prog));}
-        else return prog;
-    }
-    // If chroma shader failed for any reason, create a simple copy program as fallback
-    const copyFs=`precision mediump float;uniform sampler2D u_tex;varying vec2 v_uv;void main(){gl_FragColor=texture2D(u_tex,v_uv);}`;
-    const copyF=compileShader(copyFs,gl.FRAGMENT_SHADER);
-    if(!vsn||!copyF){console.error('Failed to compile fallback copy shader');return null;}
-    const copyProg=gl.createProgram();gl.attachShader(copyProg,vsn);gl.attachShader(copyProg,copyF);gl.linkProgram(copyProg);if(!gl.getProgramParameter(copyProg,gl.LINK_STATUS)){console.error(gl.getProgramInfoLog(copyProg));return null;}return copyProg;
-}
-function initChromaResources(){
-    if(!gl) return;
-    chromaProgram=createChromaProgram();
-    quadBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);const verts=new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]);gl.bufferData(gl.ARRAY_BUFFER,verts,gl.STATIC_DRAW);
-    chromaTex=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,chromaTex);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
-}
-function presentChroma(amount){
-    if(!gl||!chromaProgram){// fallback: blit offscreen into visible canvas
-        const dst=canvas.getContext('2d');if(!dst)return;dst.clearRect(0,0,canvas.width,canvas.height);dst.drawImage(offscreenCanvas,0,0);return;
-    }
-    gl.viewport(0,0,canvas.width,canvas.height);
-    gl.clearColor(0,0,0,1);gl.clear(gl.COLOR_BUFFER_BIT);
-    // upload texture from offscreen
-    gl.bindTexture(gl.TEXTURE_2D,chromaTex);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,0);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,offscreenCanvas);
-    gl.useProgram(chromaProgram);
-    const aPos=gl.getAttribLocation(chromaProgram,'a_pos');gl.bindBuffer(gl.ARRAY_BUFFER,quadBuffer);gl.enableVertexAttribArray(aPos);gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
-    const locAmt=gl.getUniformLocation(chromaProgram,'u_amount');gl.uniform1f(locAmt,amount);
-    const locRes=gl.getUniformLocation(chromaProgram,'u_resolution');gl.uniform2f(locRes,canvas.width,canvas.height);
-    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,chromaTex);const locTex=gl.getUniformLocation(chromaProgram,'u_tex');gl.uniform1i(locTex,0);
-    gl.drawArrays(gl.TRIANGLES,0,6);
-}
-if(gl) initChromaResources();
+const ctx=canvas.getContext('2d');
 const startScreen=document.getElementById('start-screen');
 const healthEl=document.getElementById('healthEl');
 const comboEl=document.getElementById('comboEl');
@@ -187,7 +142,7 @@ let freqIdx=1, dmgIdx=1;
 let noteDensity=FREQ_SETTINGS[freqIdx];
 let currentDiff=DMG_SETTINGS[dmgIdx];
 
-function resize(){width=window.innerWidth;height=window.innerHeight;canvas.width=width;canvas.height=height;offscreenCanvas.width=width;offscreenCanvas.height=height;centerX=width/2;centerY=height/2;if(gl)gl.viewport(0,0,canvas.width,canvas.height);} 
+function resize(){width=window.innerWidth;height=window.innerHeight;canvas.width=width;canvas.height=height;centerX=width/2;centerY=height/2;}
 window.addEventListener('resize',resize);resize();
 
 let gameState='start',health=100,combo=0;
@@ -203,10 +158,9 @@ let ampSampleRate=0;
 let totalNotes=0,hitNotes=0;
 
 const DIRECTIONS=[
-    // swapped: make ArrowUp behave as down and ArrowDown behave as up
-    {x:0,y:1,key:'ArrowUp'},
+    {x:0,y:-1,key:'ArrowUp'},
     {x:1,y:0,key:'ArrowRight'},
-    {x:0,y:-1,key:'ArrowDown'},
+    {x:0,y:1,key:'ArrowDown'},
     {x:-1,y:0,key:'ArrowLeft'}
 ];
 
@@ -517,7 +471,7 @@ class Enemy{
 }
 
 class SlashedEnemy{
-    constructor(x,y,color,lane){this.x=x;this.y=y;this.color=color;this.life=1;this.gap=0;this.angle=(lane===0||lane===2)?Math.PI/2:0;}
+    constructor(x,y,color,lane){this.x=x;this.y=y;this.color=color;this.life=1;this.gap=0;this.angle=(lane===0||lane===2)?0:Math.PI/2;}
     update(dt){this.life-=dt*2.5;this.gap+=dt*80;}
     draw(c){
         if(this.life<=0)return;
@@ -777,9 +731,6 @@ function gameLoop(ts){
     if((gameState==='dead'||gameState==='cleared')&&deadTimer>3){
         ctx.fillStyle=`rgba(0,0,0,${Math.min(1,(deadTimer-3)/1.5)})`;ctx.fillRect(0,0,width,height);
     }
-    // Compute chromatic aberration amount based on combo, beat and damage pulses
-    const chromaAmount = Math.min(1.2, comboT*beatPulse*0.9 + damagePulse*0.6 + beatPulse*0.15);
-    presentChroma(chromaAmount);
     requestAnimationFrame(gameLoop);
 }
 </script>
