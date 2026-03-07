@@ -1027,7 +1027,7 @@ function gameLoop(ts){
     damagePulse+=(0-damagePulse)*10*dt;playerOffsetX+=(0-playerOffsetX)*15*dt;playerOffsetY+=(0-playerOffsetY)*15*dt;
     cameraJerkX+=(0-cameraJerkX)*15*dt;cameraJerkY+=(0-cameraJerkY)*15*dt;
 
-    if(gameState==='playing'){enemies.forEach(e=>e.update(tt));enemies=enemies.filter(e=>e.active);}
+    if(gameState==='playing'||gameState==='dying'){enemies.forEach(e=>e.update(tt));enemies=enemies.filter(e=>e.active);}
     slashedEnemies.forEach(e=>e.update(dt));slashedEnemies=slashedEnemies.filter(e=>e.life>0);
     if(slashedPlayer)slashedPlayer.update(dt);
     const curAmp=getSongAmplitude(tt);
