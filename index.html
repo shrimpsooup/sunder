@@ -58,28 +58,15 @@
             pointer-events:none;z-index:5;display:none;
         }
         #dpad{
-            position:absolute;bottom:28px;right:20px;
-            display:grid;
-            grid-template-columns:repeat(3,62px);
-            grid-template-rows:repeat(3,62px);
-            gap:3px;
-        }
-        .dpad-btn{
-            width:62px;height:62px;border-radius:50%;
-            background:rgba(255,255,255,0.06);
-            border:1.5px solid rgba(255,255,255,0.16);
-            color:rgba(255,255,255,0.5);
-            font-size:22px;
-            display:flex;align-items:center;justify-content:center;
-            pointer-events:auto;cursor:pointer;user-select:none;
+            position:absolute;bottom:18px;right:14px;
+            width:200px;height:200px;
+            pointer-events:auto;
+            touch-action:none;
             -webkit-tap-highlight-color:transparent;
-            font-family:'Inter',sans-serif;
-            transition:background 0.07s,border-color 0.07s;
-            touch-action:manipulation;
         }
-        .dpad-btn:active,.dpad-btn.pressed{
-            background:rgba(255,255,255,0.22);
-            border-color:rgba(255,255,255,0.45);
+        #dpad-canvas{
+            display:block;width:200px;height:200px;
+            cursor:pointer;
         }
         #quad-btn{
             position:absolute;bottom:48px;left:24px;
@@ -211,17 +198,9 @@
 <div id="mobile-controls">
   <!-- Quad strike button — bottom left -->
   <div id="quad-btn">quad</div>
-  <!-- D-pad — bottom right (3×3 grid, corners empty) -->
+  <!-- D-pad — bottom right, torus canvas -->
   <div id="dpad">
-    <div></div>
-    <div class="dpad-btn" id="btn-up">↑</div>
-    <div></div>
-    <div class="dpad-btn" id="btn-left">←</div>
-    <div></div>
-    <div class="dpad-btn" id="btn-right">→</div>
-    <div></div>
-    <div class="dpad-btn" id="btn-down">↓</div>
-    <div></div>
+    <canvas id="dpad-canvas" width="200" height="200"></canvas>
   </div>
 </div>
 
@@ -649,27 +628,46 @@ class SlashedEnemy{
 
 class PlayerHalves{
     constructor(slashAngle){
-        this.angle=slashAngle;this.t=0;
+        this.angle=slashAngle;
+        this.t=0;
         const nx=Math.cos(slashAngle+Math.PI/2),ny=Math.sin(slashAngle+Math.PI/2);
-        const spd=55;
-        this.driftA={x:nx*spd+(Math.random()-0.5)*30,y:ny*spd+(Math.random()-0.5)*30};
-        this.driftB={x:-nx*spd+(Math.random()-0.5)*30,y:-ny*spd+(Math.random()-0.5)*30};
-        this.rotA=(Math.random()-0.5)*2.5;this.rotB=(Math.random()-0.5)*2.5;
+        const spd=90;
+        this.vxA=nx*spd+(Math.random()-0.5)*70; this.vyA=ny*spd+(Math.random()-0.5)*70-40;
+        this.vxB=-nx*spd+(Math.random()-0.5)*70; this.vyB=-ny*spd+(Math.random()-0.5)*70-40;
+        this.pxA=0; this.pyA=0;
+        this.pxB=0; this.pyB=0;
+        this.wA=(Math.random()-0.5)*6; this.wB=(Math.random()-0.5)*6;
+        this.rA=0; this.rB=0;
+        this.alive=true;
     }
-    update(dt){this.t=Math.min(this.t+dt,3);}
+    update(dt){
+        const GRAVITY=420;
+        this.t+=dt;
+        this.vyA+=GRAVITY*dt; this.vyB+=GRAVITY*dt;
+        this.pxA+=this.vxA*dt; this.pyA+=this.vyA*dt;
+        this.pxB+=this.vxB*dt; this.pyB+=this.vyB*dt;
+        this.rA+=this.wA*dt; this.rB+=this.wB*dt;
+        const margin=PLAYER_RADIUS*4;
+        const offA=centerY+this.pyA>height+margin;
+        const offB=centerY+this.pyB>height+margin;
+        if((offA&&offB)||this.t>5) this.alive=false;
+    }
     draw(ctx2){
-        const ease=this.t<1?this.t*this.t*(3-2*this.t):1;
-        const alpha=Math.max(0,1-Math.max(0,this.t-0.6)/1.0);
-        if(alpha<=0)return;
-        this._half(ctx2,1,ease,alpha);this._half(ctx2,-1,ease,alpha);
+        if(!this.alive)return;
+        const alpha=Math.min(1,this.t/0.06);
+        this._half(ctx2,1,alpha);
+        this._half(ctx2,-1,alpha);
     }
-    _half(ctx2,side,ease,alpha){
-        const dx=side===1?this.driftA.x:this.driftB.x;
-        const dy=side===1?this.driftA.y:this.driftB.y;
-        const rot=side===1?this.rotA:this.rotB;
+    _half(ctx2,side,alpha){
+        const px=side===1?this.pxA:this.pxB;
+        const py=side===1?this.pyA:this.pyB;
+        const spin=side===1?this.rA:this.rB;
         const r=PLAYER_RADIUS;
-        ctx2.save();ctx2.globalAlpha=alpha;
-        ctx2.translate(centerX+dx*ease,centerY+dy*ease);ctx2.rotate(rot*ease);ctx2.rotate(this.angle);
+        ctx2.save();
+        ctx2.globalAlpha=alpha;
+        ctx2.translate(centerX+px,centerY+py);
+        ctx2.rotate(spin);
+        ctx2.rotate(this.angle);
         ctx2.beginPath();
         if(side===1){ctx2.rect(-(r+4),0,(r+4)*2,(r+4)*2);}
         else{ctx2.rect(-(r+4),-(r+4)*2,(r+4)*2,(r+4)*2);}
@@ -1016,26 +1014,136 @@ window.addEventListener('keydown',e=>{
 
 /* ── Mobile touch controls setup ─────────────────────────────────────── */
 if(isMobile){
-    // Helper: add both touchstart and pointerdown for max compatibility
-    function bindBtn(el, key){
+    // ── Torus dpad ───────────────────────────────────────────────────────
+    const dpadCanvas  = document.getElementById('dpad-canvas');
+    const dpadCtx     = dpadCanvas.getContext('2d');
+    const DPAD_SIZE   = 200;
+    const DPAD_CX     = DPAD_SIZE / 2;
+    const DPAD_CY     = DPAD_SIZE / 2;
+    const OUTER_R     = 90;
+    const INNER_R     = 46;
+    const GAP_DEG     = 5;          // angular gap between segments
+    const GAP         = GAP_DEG * Math.PI / 180;
+
+    // Segment definitions: { key, label, midAngle, startAngle, endAngle }
+    // Angles in standard canvas coords (0 = right, CW positive)
+    // Up=-90°, Right=0°, Down=90°, Left=180°
+    const SEGMENTS = [
+        { key:'ArrowUp',    label:'↑', mid: -Math.PI/2 },
+        { key:'ArrowRight', label:'→', mid:  0          },
+        { key:'ArrowDown',  label:'↓', mid:  Math.PI/2  },
+        { key:'ArrowLeft',  label:'←', mid:  Math.PI    },
+    ];
+    SEGMENTS.forEach(s=>{
+        s.start = s.mid - Math.PI/4 + GAP/2;
+        s.end   = s.mid + Math.PI/4 - GAP/2;
+    });
+
+    // pressedSegment: index or null
+    let pressedSeg = null;
+
+    function drawDpad(){
+        dpadCtx.clearRect(0, 0, DPAD_SIZE, DPAD_SIZE);
+        SEGMENTS.forEach((seg, i)=>{
+            const pressed = pressedSeg === i;
+
+            // Arc path (annulus sector)
+            dpadCtx.beginPath();
+            dpadCtx.arc(DPAD_CX, DPAD_CY, OUTER_R, seg.start, seg.end);
+            dpadCtx.arc(DPAD_CX, DPAD_CY, INNER_R, seg.end, seg.start, true);
+            dpadCtx.closePath();
+
+            // Fill
+            dpadCtx.fillStyle = pressed
+                ? 'rgba(255,255,255,0.22)'
+                : 'rgba(255,255,255,0.06)';
+            dpadCtx.fill();
+
+            // Stroke
+            dpadCtx.strokeStyle = pressed
+                ? 'rgba(255,255,255,0.50)'
+                : 'rgba(255,255,255,0.18)';
+            dpadCtx.lineWidth = 1.5;
+            dpadCtx.stroke();
+
+            // Arrow label — positioned at midpoint between inner & outer radii
+            const labelR = (INNER_R + OUTER_R) / 2;
+            const lx = DPAD_CX + Math.cos(seg.mid) * labelR;
+            const ly = DPAD_CY + Math.sin(seg.mid) * labelR;
+            dpadCtx.font = 'bold 16px Inter,sans-serif';
+            dpadCtx.textAlign = 'center';
+            dpadCtx.textBaseline = 'middle';
+            dpadCtx.fillStyle = pressed
+                ? 'rgba(255,255,255,0.85)'
+                : 'rgba(255,255,255,0.45)';
+            dpadCtx.fillText(seg.label, lx, ly);
+        });
+    }
+
+    function segmentFromPoint(x, y){
+        const dx = x - DPAD_CX;
+        const dy = y - DPAD_CY;
+        const r  = Math.sqrt(dx*dx + dy*dy);
+        if(r < INNER_R || r > OUTER_R) return -1;
+
+        // atan2 gives -π..π; normalise to find which quarter
+        let angle = Math.atan2(dy, dx); // -π to π
+
+        for(let i=0; i<SEGMENTS.length; i++){
+            const s = SEGMENTS[i];
+            // Unwrap: left segment straddles the ±π boundary
+            let a = angle;
+            if(s.mid > Math.PI/2 && a < 0) a += Math.PI*2; // left seg: shift negative angles
+            if(a >= s.start && a <= s.end) return i;
+        }
+        return -1;
+    }
+
+    function localXY(e, el){
+        const rect = el.getBoundingClientRect();
+        const src  = e.changedTouches ? e.changedTouches[0] : e;
+        return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+    }
+
+    function onDpadStart(e){
+        e.preventDefault();
+        const {x,y} = localXY(e, dpadCanvas);
+        const idx = segmentFromPoint(x, y);
+        if(idx === -1) return;
+        pressedSeg = idx;
+        drawDpad();
+        handleInput(SEGMENTS[idx].key);
+    }
+
+    function onDpadEnd(e){
+        e.preventDefault();
+        pressedSeg = null;
+        drawDpad();
+    }
+
+    dpadCanvas.addEventListener('touchstart',  onDpadStart, {passive:false});
+    dpadCanvas.addEventListener('touchend',    onDpadEnd,   {passive:false});
+    dpadCanvas.addEventListener('touchcancel', onDpadEnd,   {passive:false});
+    dpadCanvas.addEventListener('pointerdown', onDpadStart, {passive:false});
+    dpadCanvas.addEventListener('pointerup',   onDpadEnd,   {passive:false});
+
+    // Draw initial state
+    drawDpad();
+
+    // ── Quad button ──────────────────────────────────────────────────────
+    function bindQuad(el){
         function fire(e){
             e.preventDefault();
-            // Brief visual feedback
             el.classList.add('pressed');
             setTimeout(()=>el.classList.remove('pressed'), 120);
-            handleInput(key);
+            handleInput('Space');
         }
         el.addEventListener('touchstart', fire, {passive:false});
         el.addEventListener('pointerdown', fire, {passive:false});
     }
+    bindQuad(document.getElementById('quad-btn'));
 
-    bindBtn(document.getElementById('btn-up'),    'ArrowUp');
-    bindBtn(document.getElementById('btn-right'),  'ArrowRight');
-    bindBtn(document.getElementById('btn-down'),   'ArrowDown');
-    bindBtn(document.getElementById('btn-left'),   'ArrowLeft');
-    bindBtn(document.getElementById('quad-btn'),   'Space');
-
-    // Prevent scroll/zoom on the canvas
+    // Prevent scroll/zoom on canvas
     canvas.addEventListener('touchstart', e=>e.preventDefault(), {passive:false});
     canvas.addEventListener('touchmove',  e=>e.preventDefault(), {passive:false});
 }
@@ -1180,7 +1288,7 @@ function gameLoop(ts){
     if(gameState==='playing'||gameState==='dying'){enemies.forEach(e=>e.update(tt));enemies=enemies.filter(e=>e.active);}
     slashedEnemies.forEach(e=>e.update(dt));slashedEnemies=slashedEnemies.filter(e=>e.life>0);
     if(slashedPlayer)slashedPlayer.update(dt);
-    if(playerHalves)playerHalves.update(dt);
+    if(playerHalves){playerHalves.update(dt);if(!playerHalves.alive)playerHalves=null;}
 
     const curAmp=getSongAmplitude(tt);
     const ampBoost=Math.min(2.5,0.5+curAmp*6);
